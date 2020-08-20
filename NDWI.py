@@ -127,28 +127,30 @@ class Calculate_Area:
 
         """
         self.path = ndwi_path
-        self.print_screen()
+        self.run()
         
     
     def read_image(self):
         return rasterio.open(self.path).read(1)
     
-    def calc_area(self):
+    def threshold(self):
         return self.read_image()[4500:6000, 2000:4800] > 0.65   
     
+    def calc_area(self):
+        return len(self.threshold()[self.threshold()==True])* 10*10*10**(-6)
     
     def print_screen(self):
         
-        #print('{:.2f} km²'.format(len(self.calc_area()[self.calc_area()==True])* 10*10*10**(-6)))
+        print('{:.2f} km²'.format(self.calc_area()))
         
-        plt.imshow(self.calc_area(), cmap='gray')
+        plt.imshow(self.threshold(), cmap='gray')
         plt.title(self.path)
         plt.show()
-        return len(self.calc_area()[self.calc_area()==True])* 10*10*10**(-6)
+        
         
         
     def run(self):
-        self.print_screen()
+        self.calc_area()
         
         
         
@@ -157,8 +159,8 @@ class Vectorize:
     
     def __init__(self, input_raster, output_name, contour_level = 0.8, feat_name = 'Ulubatli Golu'):
         
-        self.input     = Calculate_Area(input_raster).calc_area()
-        self.area      = Calculate_Area(input_raster).print_screen()
+        self.input     = Calculate_Area(input_raster).threshold()
+        self.area      = Calculate_Area(input_raster).calc_area()
         self.output    = output_name
         self.level     = contour_level
         self.lake_name = feat_name
@@ -207,7 +209,7 @@ class Vectorize:
         plt.gca().invert_yaxis()
 
     
-    
+        
     def runApp(self):
         self.save_shp()
         
