@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from skimage import measure
 from shapely.geometry import Polygon, MultiPolygon
+from shapely import affinity
 from osgeo import ogr
 import os
 import geopandas
@@ -15,7 +16,6 @@ class NDWI:
 
     def __init__(self, path_NIR, path_SWIR, output_name):
         """
-
         Parameters
         ----------
         path_NIR : String
@@ -40,8 +40,7 @@ class NDWI:
         self.path_SWIR   = path_SWIR
         self.output_name = output_name
         self.runApp()
-        
-        
+                
     def read_images(self):
         """
         Function read NIR and SWIR bands
@@ -55,8 +54,7 @@ class NDWI:
         band_SWIR = rasterio.open(self.path_SWIR)
         
         return (band_NIR, band_SWIR)
-    
-    
+        
     def resample(self):
         """
         Function calculate the resample_factor and resample(bilinear) the SWIR band
@@ -72,8 +70,7 @@ class NDWI:
                                                     int(self.read_images()[1].width * resample_factor)
                                                     ), resampling=Resampling.bilinear)
         return resampled_SWIR
-        
-    
+            
     def NDWI_calc(self):
         """
         Function calculate NDWI
@@ -83,12 +80,10 @@ class NDWI:
         Array
             Returns NDWI as a array of uint16
 
-        """
-        
+        """    
         np.seterr(divide='ignore', invalid='ignore') #Settings before ndwi process
         return  (self.read_images()[0].read().astype(float) - self.resample().astype(float)) / (self.read_images()[0].read() + self.resample())
-        
-    
+            
     def save_NDWI(self):
         """
         Function create NDWI file on tif format and save current path.
@@ -112,7 +107,6 @@ class NDWI:
     def runApp(self):
         self.save_NDWI()
         
-
 class Calculate_Area:
     
     def __init__(self, ndwi_path):
@@ -128,8 +122,7 @@ class Calculate_Area:
         """
         self.path = ndwi_path
         self.run()
-        
-    
+            
     def read_image(self):
         return rasterio.open(self.path).read(1)
     
@@ -152,9 +145,6 @@ class Calculate_Area:
     def run(self):
         self.calc_area()
         
-        
-        
-        
 class Vectorize:
     
     def __init__(self, input_raster, output_name, contour_level = 0.8, feat_name = 'Ulubatli Golu'):
@@ -166,16 +156,13 @@ class Vectorize:
         self.lake_name = feat_name
         self.runApp()
         
-    def find_contours(self):
-        
+    def find_contours(self):       
         return measure.find_contours(self.input, self.level)
     
     
-    def multipolygon(self):
-        
-        return MultiPolygon(map(Polygon, map(np.flip, map(np.squeeze, self.find_contours()))))
-        
-        
+    def multipolygon(self):     
+        return MultiPolygon(map(Polygon,map(np.squeeze, self.find_contours())))
+             
     def save_shp(self):
         
         if self.output in os.listdir():
@@ -188,7 +175,7 @@ class Vectorize:
             layer       = driver_ds.CreateLayer('Shapefile')
             
             layer.CreateField(ogr.FieldDefn('Lake', ogr.OFTString))
-            layer.CreateField(ogr.FieldDefn('Area', ogr.OFTReal))
+            layer.CreateField(ogr.FieldDefn('Area (km²)', ogr.OFTReal))
             
             defn           = layer.GetLayerDefn()
             feature_create = ogr.Feature(defn)
@@ -197,16 +184,16 @@ class Vectorize:
             feature_create.SetField('lake', self.lake_name)
             feature_create.SetField('Area (km²)', self.area)
             
-            geometry = ogr.CreateGeometryFromWkb(self.multipolygon().wkb)
+            rotated = affinity.rotate(self.multipolygon(), -90, origin=(0, 0))
+            geometry = ogr.CreateGeometryFromWkb(rotated.wkb)
             feature_create.SetGeometry(geometry)
-            
             
             layer.CreateFeature(feature_create)
     
     def show_vector(self):
         vector = geopandas.read_file(self.output)
         vector.plot()
-        plt.gca().invert_yaxis()
+        
 
     
         
