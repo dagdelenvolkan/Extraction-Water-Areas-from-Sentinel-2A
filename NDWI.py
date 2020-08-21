@@ -1,13 +1,17 @@
 import rasterio
 from rasterio.enums import Resampling
+from rasterio.mask import mask
+from rasterio.plot import show
 import numpy as np
 import matplotlib.pyplot as plt
 from skimage import measure
 from shapely.geometry import Polygon, MultiPolygon
 from shapely import affinity
-from osgeo import ogr
+from osgeo import ogr, osr
 import os
 import geopandas
+from shapely.geometry import box
+import json
 
 class NDWI:
     """
@@ -106,7 +110,45 @@ class NDWI:
     
     def runApp(self):
         self.save_NDWI()
-        
+
+class Clip_NDWI:
+    
+    def __init__(self, input, output_name, minx = 620000, miny = 4442000, maxx = 650000, maxy = 4455000):
+        self.input = rasterio.open(input)
+        self.output = output_name
+        self.minx = minx
+        self.miny = miny
+        self.maxx = maxx
+        self.maxy = maxy
+        self.run()
+
+    def create_box(self):
+        return geopandas.GeoDataFrame({'geometry': box(self.minx, self.miny, self.maxx, self.maxy)},
+                                index=[0], crs=self.input.crs)
+
+    def get_json(self):
+        return [json.loads(self.create_box().to_json())['features'][0]['geometry']]
+    
+    def clip_image(self):
+        clipped, clipped_transform = mask(dataset=self.input, shapes=self.get_json(), crop=True)
+        clipped_meta = self.input.meta.copy()
+        clipped_meta.update({"driver": "GTiff",
+                 "height": clipped.shape[1],
+                 "width": clipped.shape[2],
+                 "transform": clipped_transform,
+                 "crs": self.input.crs}
+                         )
+        return clipped, clipped_meta
+    
+    
+    def save_clip(self):
+        with rasterio.open(self.output, 'w', **self.clip_image()[1]) as clp:
+            clp.write(self.clip_image()[0])
+            clp.close()
+            
+    def run(self):
+        self.save_clip()
+    
 class Calculate_Area:
     
     def __init__(self, ndwi_path):
@@ -127,7 +169,8 @@ class Calculate_Area:
         return rasterio.open(self.path).read(1)
     
     def threshold(self):
-        return self.read_image()[4500:6000, 2000:4800] > 0.65   
+        
+        return self.read_image() > 0.65   
     
     def calc_area(self):
         return len(self.threshold()[self.threshold()==True])* 10*10*10**(-6)
@@ -136,8 +179,10 @@ class Calculate_Area:
         
         print('{:.2f} km²'.format(self.calc_area()))
         
-        plt.imshow(self.threshold(), cmap='gray')
-        plt.title(self.path)
+        fig, ax = plt.subplots(1, figsize=(12, 12))
+        plt.ticklabel_format(style = 'plain')
+        plt.title(f'{self.path}  ({rasterio.open(self.path).crs})')
+        show(self.threshold(), cmap='gray', transform=rasterio.open(self.path).transform)     
         plt.show()
         
         
@@ -149,6 +194,7 @@ class Vectorize:
     
     def __init__(self, input_raster, output_name, contour_level = 0.8, feat_name = 'Ulubatli Golu'):
         
+        self.image     = rasterio.open(input_raster)
         self.input     = Calculate_Area(input_raster).threshold()
         self.area      = Calculate_Area(input_raster).calc_area()
         self.output    = output_name
@@ -156,7 +202,7 @@ class Vectorize:
         self.lake_name = feat_name
         self.runApp()
         
-    def find_contours(self):       
+    def find_contours(self):  
         return measure.find_contours(self.input, self.level)
     
     
@@ -172,7 +218,10 @@ class Vectorize:
         else:
             driver      = ogr.GetDriverByName('ESRI Shapefile')
             driver_ds   = driver.CreateDataSource(self.output)
-            layer       = driver_ds.CreateLayer('Shapefile')
+            spatial_ref = osr.SpatialReference()
+            spatial_ref.ImportFromEPSG(int(str(self.image.crs).split(':')[1]))
+            layer       = driver_ds.CreateLayer('Shapefile', spatial_ref)
+            
             
             layer.CreateField(ogr.FieldDefn('Lake', ogr.OFTString))
             layer.CreateField(ogr.FieldDefn('Area (km²)', ogr.OFTReal))
@@ -184,7 +233,7 @@ class Vectorize:
             feature_create.SetField('lake', self.lake_name)
             feature_create.SetField('Area (km²)', self.area)
             
-            rotated = affinity.rotate(self.multipolygon(), -90, origin=(0, 0))
+            rotated = affinity.rotate(self.multipolygon(), -90, origin='center')         
             geometry = ogr.CreateGeometryFromWkb(rotated.wkb)
             feature_create.SetGeometry(geometry)
             
