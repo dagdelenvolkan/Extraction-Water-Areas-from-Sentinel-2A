@@ -2,15 +2,13 @@ import rasterio
 from rasterio.enums import Resampling
 from rasterio.mask import mask
 from rasterio.plot import show
+from rasterio.features import shapes
 import numpy as np
 import matplotlib.pyplot as plt
-from skimage import measure
-from shapely.geometry import Polygon, MultiPolygon
-from shapely import affinity
+from shapely.geometry import Polygon, MultiPolygon, box
 from osgeo import ogr, osr
 import os
 import geopandas
-from shapely.geometry import box
 import json
 
 class NDWI:
@@ -192,23 +190,27 @@ class Calculate_Area:
         
 class Vectorize:
     
-    def __init__(self, input_raster, output_name, contour_level = 0.8, feat_name = 'Ulubatli Golu'):
+    def __init__(self, input_raster, output_name, feat_name = 'Ulubatli Golu'):
         
         self.image     = rasterio.open(input_raster)
-        self.input     = Calculate_Area(input_raster).threshold()
+        self.input     = np.float32(Calculate_Area(input_raster).threshold().astype(float))
         self.area      = Calculate_Area(input_raster).calc_area()
         self.output    = output_name
-        self.level     = contour_level
         self.lake_name = feat_name
+        self.array = []
         self.runApp()
         
     def find_contours(self):  
-        return measure.find_contours(self.input, self.level)
+        return [shape['coordinates'] for shape, value in shapes(self.input, transform=self.image.transform)]
     
     
-    def multipolygon(self):     
-        return MultiPolygon(map(Polygon,map(np.squeeze, self.find_contours())))
-             
+    def multipolygon(self): 
+        for i in self.find_contours():
+            if len(i) == 1:
+                self.array.append(Polygon(np.squeeze(i)))
+        temp = Polygon(np.squeeze(self.find_contours()[-2][0]))
+        return temp.difference(MultiPolygon(self.array))
+        
     def save_shp(self):
         
         if self.output in os.listdir():
@@ -233,19 +235,18 @@ class Vectorize:
             feature_create.SetField('lake', self.lake_name)
             feature_create.SetField('Area (km²)', self.area)
             
-            rotated = affinity.rotate(self.multipolygon(), -90, origin='center')         
-            geometry = ogr.CreateGeometryFromWkb(rotated.wkb)
+        
+            geometry = ogr.CreateGeometryFromWkb(self.multipolygon().wkb)
             feature_create.SetGeometry(geometry)
             
             layer.CreateFeature(feature_create)
     
     def show_vector(self):
         vector = geopandas.read_file(self.output)
-        vector.plot()
-        
+        fig, ax = plt.subplots()
+        ax.ticklabel_format(style='plain')
+        vector.plot(ax=ax)
 
-    
-        
     def runApp(self):
         self.save_shp()
         
