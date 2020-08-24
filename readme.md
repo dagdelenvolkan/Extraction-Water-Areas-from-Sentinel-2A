@@ -14,3 +14,4 @@
 * Sentinel görüntülerinin otomatik indirilmesi (bulutluluk ve bölge seçerek)
 * NDWI map üzerinden görüntü işleme ile iyileştirme
 * Fiona ile web tabanlı gösterim ve değişim gösterimi (farklı zamanlı görüntüler ile su alanlarının değişiminin izlenmesi)
+* Vektörlerin topoloji kontrolleri
