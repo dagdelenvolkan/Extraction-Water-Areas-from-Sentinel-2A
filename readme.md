@@ -15,3 +15,5 @@
 * NDWI map üzerinden görüntü işleme ile iyileştirme
 * Fiona ile web tabanlı gösterim ve değişim gösterimi (farklı zamanlı görüntüler ile su alanlarının değişiminin izlenmesi)
 * Vektörlerin topoloji kontrolleri
+* Test verilieride yüklensin buraya
+* Robust bir kod olması açısından sadece verinin olduğu klasörü sorup içinden veriyi otomatik okusun ilgili bantları
