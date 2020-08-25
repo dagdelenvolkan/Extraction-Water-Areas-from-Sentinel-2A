@@ -17,3 +17,5 @@
 * Vektörlerin topoloji kontrolleri
 * Test verilieride yüklensin buraya
 * Robust bir kod olması açısından sadece verinin olduğu klasörü sorup içinden veriyi otomatik okusun ilgili bantları
+* Watershed segmentation ile su alanlarını belirleme
+* Otsu vb thresholding algoritmaları ile thresholdlama çalışılacak
