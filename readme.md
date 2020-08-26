@@ -6,7 +6,7 @@
 
 [x] 21.08.2020 --> Clip eklendi, vectorize için projeksiyon bilgisi ve bu projeksiyona ait gerçek koordinatlar vector için üretilir hale getirildi.
 
-
+[x] 26.08.2020 --> Raster to vector iyileştirildi. Thresholding belirlenmesi otsu algoritması ile otomatik olarak gerçekleştiriliyor. 
 ## To-Do
 
 * Su alanlarının bulunmasında otomatik eşik değeri bulan bir sisteme geçilecek.
