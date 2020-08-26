@@ -271,7 +271,7 @@ class Vectorize:
 
         """
         vector = geopandas.read_file(self.output)
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(1, figsize=(12, 12))
         ax.ticklabel_format(style='plain')
         vector.plot(ax=ax)
 
