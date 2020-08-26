@@ -1,15 +1,15 @@
 import rasterio
+import cv2
 from rasterio.enums import Resampling
-from rasterio.mask import mask
 from rasterio.plot import show
-from rasterio.features import shapes
 import numpy as np
+from skimage.filters import threshold_otsu
 import matplotlib.pyplot as plt
-from shapely.geometry import Polygon, MultiPolygon, box
+from shapely.geometry import Polygon, MultiPolygon
 from osgeo import ogr, osr
 import os
 import geopandas
-import json
+from shapely.affinity import affine_transform
 
 class NDWI:
     """
@@ -105,47 +105,10 @@ class NDWI:
             dst.close()
             print('NDWI has created succesfully')
     
-    
     def runApp(self):
         self.save_NDWI()
 
-class Clip_NDWI:
-    
-    def __init__(self, input, output_name, minx = 620000, miny = 4442000, maxx = 650000, maxy = 4455000):
-        self.input = rasterio.open(input)
-        self.output = output_name
-        self.minx = minx
-        self.miny = miny
-        self.maxx = maxx
-        self.maxy = maxy
-        self.run()
 
-    def create_box(self):
-        return geopandas.GeoDataFrame({'geometry': box(self.minx, self.miny, self.maxx, self.maxy)},
-                                index=[0], crs=self.input.crs)
-
-    def get_json(self):
-        return [json.loads(self.create_box().to_json())['features'][0]['geometry']]
-    
-    def clip_image(self):
-        clipped, clipped_transform = mask(dataset=self.input, shapes=self.get_json(), crop=True)
-        clipped_meta = self.input.meta.copy()
-        clipped_meta.update({"driver": "GTiff",
-                 "height": clipped.shape[1],
-                 "width": clipped.shape[2],
-                 "transform": clipped_transform,
-                 "crs": self.input.crs}
-                         )
-        return clipped, clipped_meta
-    
-    
-    def save_clip(self):
-        with rasterio.open(self.output, 'w', **self.clip_image()[1]) as clp:
-            clp.write(self.clip_image()[0])
-            clp.close()
-            
-    def run(self):
-        self.save_clip()
     
 class Calculate_Area:
     
@@ -157,24 +120,49 @@ class Calculate_Area:
         ----------
         ndwi_path : String
             NDVI input file path 
-
-
         """
         self.path = ndwi_path
         self.run()
             
     def read_image(self):
+        """
+        This function open and read as a numpy array image.
+
+        Returns
+        -------
+        numpy array
+            Returns images' numpy array.
+
+        """
         return rasterio.open(self.path).read(1)
     
     def threshold(self):
-        
-        return self.read_image() > 0.65   
+        """
+        This function create thresholded image to seperate water and soil.
+
+        Returns
+        -------
+        Numpy Array
+            Returns numpy array which consist of booleans.
+
+        """
+        return self.read_image() > threshold_otsu(np.nan_to_num(self.read_image(), 0))    
     
     def calc_area(self):
+        """
+        This function calculate and return water area.
+        
+        Returns
+        -------
+        float
+            Water Area.
+        """
         return len(self.threshold()[self.threshold()==True])* 10*10*10**(-6)
     
     def print_screen(self):
-        
+        """
+        This function create matplotlib image graphic and also print area of water.
+        """
         print('{:.2f} km²'.format(self.calc_area()))
         
         fig, ax = plt.subplots(1, figsize=(12, 12))
@@ -183,65 +171,105 @@ class Calculate_Area:
         show(self.threshold(), cmap='gray', transform=rasterio.open(self.path).transform)     
         plt.show()
         
-        
-        
     def run(self):
         self.calc_area()
         
 class Vectorize:
     
-    def __init__(self, input_raster, output_name, feat_name = 'Ulubatli Golu'):
-        
+    def __init__(self, input_raster, output_name):
+        """
+        Parameters
+        ----------
+        input_raster : String
+            Input raster name with extension or path and name with extension. (e.g: 'input.tif' or 'folder_name/input.tif')
+        output_name : String
+            Output vector path or path and name with shp format extension (e.g: 'output.shp' or 'folder_name/output.shp') 
+        feat_name : String, optional
+            It is optional. The default is 'Ulubatli Golu'.
+        """
         self.image     = rasterio.open(input_raster)
-        self.input     = np.float32(Calculate_Area(input_raster).threshold().astype(float))
+        self.input     = np.uint8(Calculate_Area(input_raster).threshold())
         self.area      = Calculate_Area(input_raster).calc_area()
         self.output    = output_name
-        self.lake_name = feat_name
         self.array = []
         self.runApp()
         
     def find_contours(self):  
-        return [shape['coordinates'] for shape, value in shapes(self.input, transform=self.image.transform)]
+        """
+        This function return list of vector's border coordinates
+
+        Returns
+        -------
+        Tuple
+            Tuple of contours coordinates and hierarchy.
+        """
+        return cv2.findContours(self.input, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
     
     
     def multipolygon(self): 
-        for i in self.find_contours():
-            if len(i) == 1:
+        """
+        This function create multipolygons with list of find_contours' vector coordinates.
+
+        Returns
+        -------
+        shapely.geometry MultiPolygon
+            Return Multipolygon.
+        """
+        for i in self.find_contours()[0]:
+            if len(i) >= 3:
                 self.array.append(Polygon(np.squeeze(i)))
-        temp = Polygon(np.squeeze(self.find_contours()[-2][0]))
-        return temp.difference(MultiPolygon(self.array))
+        
+        return affine_transform(MultiPolygon(self.array), [self.image.transform[0],
+                                                           self.image.transform[1],
+                                                           self.image.transform[3],
+                                                           self.image.transform[4],
+                                                           self.image.transform[2],
+                                                           self.image.transform[5]])
         
     def save_shp(self):
-        
+        """
+        This function create a shp file with proper coordinate and projection system data.
+
+        Raises
+        ------
+        Exception
+            If the same name with shp name is exist, the error will be throw to warn user.
+        """
         if self.output in os.listdir():
             
             raise Exception(f'{self.output} file is exists!')
             
         else:
+            #Create driver for .shp file
             driver      = ogr.GetDriverByName('ESRI Shapefile')
             driver_ds   = driver.CreateDataSource(self.output)
+            
+            #Create Spatial Reference
             spatial_ref = osr.SpatialReference()
             spatial_ref.ImportFromEPSG(int(str(self.image.crs).split(':')[1]))
             layer       = driver_ds.CreateLayer('Shapefile', spatial_ref)
             
-            
-            layer.CreateField(ogr.FieldDefn('Lake', ogr.OFTString))
+            #Create Field
             layer.CreateField(ogr.FieldDefn('Area (km²)', ogr.OFTReal))
             
+            #Create Feature
             defn           = layer.GetLayerDefn()
             feature_create = ogr.Feature(defn)
             
             #Setting up Fields
-            feature_create.SetField('lake', self.lake_name)
             feature_create.SetField('Area (km²)', self.area)
             
-        
+            #Create geometry
             geometry = ogr.CreateGeometryFromWkb(self.multipolygon().wkb)
             feature_create.SetGeometry(geometry)
             
             layer.CreateFeature(feature_create)
     
     def show_vector(self):
+        """
+        This function shows shp file on the graph with geopandas and matplotlib library.
+
+        """
         vector = geopandas.read_file(self.output)
         fig, ax = plt.subplots()
         ax.ticklabel_format(style='plain')
@@ -249,24 +277,4 @@ class Vectorize:
 
     def runApp(self):
         self.save_shp()
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         
