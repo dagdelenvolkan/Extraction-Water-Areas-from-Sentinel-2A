@@ -10,7 +10,65 @@ from osgeo import ogr, osr
 import os
 import geopandas
 from shapely.affinity import affine_transform
+from sentinelsat import SentinelAPI, geojson_to_wkt, read_geojson
+from collections import OrderedDict
 
+
+class Download_Sentinel:
+    
+    def __init__(self, username, password, geo_json, platform_name = 'Sentinel-2', processinglevel = 'Level-2A', date_s ='NOW-3DAYS', date_e='NOW', cloud = (0, 5)):
+        """
+
+        Parameters
+        ----------
+        username : String
+            Copernicus Scihub username.
+        password : String
+            Copernicus Scihub password.
+        geo_json : String
+            geo_json path.
+        platform_name : String, optional
+            DESCRIPTION. The default is 'Sentinel-2'.
+        processinglevel : String, optional
+            DESCRIPTION. The default is 'Level-2A'.
+        date_s : String, optional
+            DESCRIPTION. The default is 'NOW-3DAYS'.
+        date_e : String, optional
+            DESCRIPTION. The default is 'NOW'.
+        cloud : Tuple, optional
+            DESCRIPTION. The default is (0, 5).
+
+        """
+
+        self.platform_name    = platform_name
+        self.processinglevel  = processinglevel
+        self.date_s           = date_s
+        self.date_e           = date_e
+        self.cloud            = cloud
+        self.json             = geojson_to_wkt(read_geojson(geo_json)) 
+        self.dict             = OrderedDict()
+        self.api              = SentinelAPI(username, password)
+        self.run()
+
+    
+    def query(self):
+        
+        return self.api.query(
+            self.json,
+            platformname         = self.platform_name,
+            processinglevel      = self.processinglevel,
+            date                 = (self.date_s, self.date_e),
+            cloudcoverpercentage = self.cloud,
+            )
+    
+    def download(self):
+        
+        return self.api.download_all(self.query())
+    
+    def run(self):
+        self.download()
+    
+    
 class NDWI:
     """
     This class working properly for Sentinel 2A satellite image. The resample function created for a sentinel2A bands.
@@ -168,7 +226,7 @@ class Calculate_Area:
         fig, ax = plt.subplots(1, figsize=(12, 12))
         plt.ticklabel_format(style = 'plain')
         plt.title(f'{self.path}  ({rasterio.open(self.path).crs})')
-        show(self.threshold(), cmap='gray', transform=rasterio.open(self.path).transform)     
+        show(rasterio.open(self.path).read(1), cmap='gray', transform=rasterio.open(self.path).transform)     
         plt.show()
         
     def run(self):
