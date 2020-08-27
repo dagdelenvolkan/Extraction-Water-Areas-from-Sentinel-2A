@@ -11,7 +11,7 @@ import os
 import geopandas
 from shapely.affinity import affine_transform
 from sentinelsat import SentinelAPI, geojson_to_wkt, read_geojson
-from collections import OrderedDict
+
 
 
 class Download_Sentinel:
@@ -46,7 +46,6 @@ class Download_Sentinel:
         self.date_e           = date_e
         self.cloud            = cloud
         self.json             = geojson_to_wkt(read_geojson(geo_json)) 
-        self.dict             = OrderedDict()
         self.api              = SentinelAPI(username, password)
         self.run()
 
