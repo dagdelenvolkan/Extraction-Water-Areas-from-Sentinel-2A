@@ -1,0 +1,11 @@
+descartes==1.1.0
+Fiona==1.8.13
+GDAL==3.0.4
+geopandas==0.8.1
+matplotlib==3.3.1
+numpy==1.19.1
+opencv==4.4.0
+rasterio==1.1.5
+scikit-image==0.16.2
+sentinelsat==0.13
+Shapely==1.7.1
