@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 from shapely.geometry import Polygon, MultiPolygon
 from osgeo import ogr, osr
 import os
+import zipfile
+import shutil
 import geopandas
 from shapely.affinity import affine_transform
 from sentinelsat import SentinelAPI, geojson_to_wkt, read_geojson
@@ -66,37 +68,54 @@ class Download_Sentinel:
     
     def run(self):
         self.download()
+
+
+class unzip:
     
+    def __init__(self, path=os.getcwd()):
+        self.path = path
+        self.unzip_bands()
+        
+    def unzip_bands(self):
+        """
+        Unzip and folder band3 and band12 to prepare NDWI class
+
+        """
+        os.chdir(self.path)
+        for i in os.listdir():
+            if i.startswith('S2A_MSIL2A'):
+                zipfile.ZipFile(i, 'r').extractall()
+                os.mkdir(i[:-4])
+                direct  = os.listdir(f'{i[:-4]}.SAFE/GRANULE')[0]
+                bands   = os.listdir(f'{i[:-4]}.SAFE/GRANULE/{direct}/IMG_DATA/R10m')
+                bands20 = os.listdir(f'{i[:-4]}.SAFE/GRANULE/{direct}/IMG_DATA/R20m')
+                for band in bands:
+                    if band.endswith('B03_10m.jp2'):
+                        shutil.move(f'{i[:-4]}.SAFE/GRANULE/{direct}/IMG_DATA/R10m/{band}', i[:-4])
+                for band20 in bands20:
+                    if band20.endswith('B12_20m.jp2'):
+                        shutil.move(f'{i[:-4]}.SAFE/GRANULE/{direct}/IMG_DATA/R20m/{band20}', i[:-4])
+            
+                shutil.rmtree(f'{i[:-4]}.SAFE')
+                
     
 class NDWI:
     """
     This class working properly for Sentinel 2A satellite image. The resample function created for a sentinel2A bands.
     """
 
-    def __init__(self, path_NIR, path_SWIR, output_name):
+    def __init__(self, path, output_name):
         """
         Parameters
         ----------
-        path_NIR : String
-            NIR Band path for NDWI. 
-            NDWI = (NIR - SWIR) / (NIR + SWIR)
-            
-            if you want to use mNDWI just put green band path as a NIR band input
-            mNDWI = (Green - SWIR) / (Green + SWIR)
-            
-        path_SWIR : String
-            SWIR Band path for NDWI
+        path: String
+            The path which include sentinel-2A bands.
             
         output_name: String
             Output name as a tif format //Example: output.tif, ndwi.tif
 
-        Returns
-        -------
-        None.
-
         """
-        self.path_NIR    = path_NIR
-        self.path_SWIR   = path_SWIR
+        self.path        = path
         self.output_name = output_name
         self.runApp()
                 
@@ -109,8 +128,11 @@ class NDWI:
         NIR and SWIR bands
 
         """
-        band_NIR  = rasterio.open(self.path_NIR)
-        band_SWIR = rasterio.open(self.path_SWIR)
+        for band in os.listdir(self.path):
+            if band.endswith('B03_10m.jp2'):
+                band_NIR = rasterio.open(band)
+            if band.endswith('B12_20m.jp2'):
+                band_SWIR = rasterio.open(band)
         
         return (band_NIR, band_SWIR)
         
@@ -203,7 +225,7 @@ class Calculate_Area:
             Returns numpy array which consist of booleans.
 
         """
-        return self.read_image() > threshold_otsu(np.nan_to_num(self.read_image(), 0))    
+        return self.read_image() > threshold_otsu(np.nan_to_num(self.read_image(), 0)) - 0.10    
     
     def calc_area(self):
         """
