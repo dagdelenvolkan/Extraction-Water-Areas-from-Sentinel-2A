@@ -130,9 +130,9 @@ class NDWI:
         """
         for band in os.listdir(self.path):
             if band.endswith('B03_10m.jp2'):
-                band_NIR = rasterio.open(band)
+                band_NIR = rasterio.open(f'{self.path}/{band}')
             if band.endswith('B12_20m.jp2'):
-                band_SWIR = rasterio.open(band)
+                band_SWIR = rasterio.open(f'{self.path}/{band}')
         
         return (band_NIR, band_SWIR)
         
