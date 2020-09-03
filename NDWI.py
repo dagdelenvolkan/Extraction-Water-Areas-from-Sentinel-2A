@@ -13,7 +13,9 @@ import shutil
 import geopandas
 from shapely.affinity import affine_transform
 from sentinelsat import SentinelAPI, geojson_to_wkt, read_geojson
-
+from shapely.geometry import box
+from rasterio.mask import mask
+import json
 
 
 class Download_Sentinel:
@@ -83,7 +85,7 @@ class unzip:
         """
         os.chdir(self.path)
         for i in os.listdir():
-            if i.startswith('S2A_MSIL2A'):
+            if i.startswith('S2A_MSIL2A') and i.endswith('.zip'):
                 zipfile.ZipFile(i, 'r').extractall()
                 os.mkdir(i[:-4])
                 direct  = os.listdir(f'{i[:-4]}.SAFE/GRANULE')[0]
@@ -146,7 +148,7 @@ class NDWI:
 
         """
         resample_factor = int(self.read_images()[0].width / self.read_images()[1].width)
-        resampled_SWIR = self.read_images()[1].read(out_shape=(self.read_images()[1].count,
+        resampled_SWIR  = self.read_images()[1].read(out_shape=(self.read_images()[1].count,
                                                     int(self.read_images()[1].height * resample_factor),
                                                     int(self.read_images()[1].width * resample_factor)
                                                     ), resampling=Resampling.bilinear)
@@ -187,7 +189,43 @@ class NDWI:
     def runApp(self):
         self.save_NDWI()
 
+class Clip_NDWI:
 
+    def __init__(self, input, output_name, minx = 620000, miny = 4442000, maxx = 650000, maxy = 4455000):
+        self.input = rasterio.open(input)
+        self.output = output_name
+        self.minx = minx
+        self.miny = miny
+        self.maxx = maxx
+        self.maxy = maxy
+        self.run()
+
+    def create_box(self):
+        return geopandas.GeoDataFrame({'geometry': box(self.minx, self.miny, self.maxx, self.maxy)},
+                                index=[0], crs=self.input.crs)
+
+    def get_json(self):
+        return [json.loads(self.create_box().to_json())['features'][0]['geometry']]
+
+    def clip_image(self):
+        clipped, clipped_transform = mask(dataset=self.input, shapes=self.get_json(), crop=True)
+        clipped_meta = self.input.meta.copy()
+        clipped_meta.update({"driver": "GTiff",
+                 "height": clipped.shape[1],
+                 "width": clipped.shape[2],
+                 "transform": clipped_transform,
+                 "crs": self.input.crs}
+                         )
+        return clipped, clipped_meta
+
+
+    def save_clip(self):
+        with rasterio.open(self.output, 'w', **self.clip_image()[1]) as clp:
+            clp.write(self.clip_image()[0])
+            clp.close()
+
+    def run(self):
+        self.save_clip()
     
 class Calculate_Area:
     
@@ -270,7 +308,7 @@ class Vectorize:
         self.input     = np.uint8(Calculate_Area(input_raster).threshold())
         self.area      = Calculate_Area(input_raster).calc_area()
         self.output    = output_name
-        self.array = []
+        self.array     = []
         self.runApp()
         
     def find_contours(self):  
